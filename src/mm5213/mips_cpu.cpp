@@ -1,6 +1,6 @@
 #include "mips.h"
 #include "mips_cpu_safe.h"
-
+#include <string>
 #include <stdlib.h>
 
 struct mips_cpu_impl
@@ -69,6 +69,31 @@ mips_error mips_cpu_set_register(
 	return mips_Success;
 }
 
+mips_error mips_cpu_set_pc(
+	mips_cpu_h state,	//!< Valid (non-empty) handle to a CPU
+	uint32_t pc			//!< Address of the next instruction to exectute.
+	)
+{
+	if (state == 0)
+		return mips_ErrorInvalidHandle;
+
+	if (pc < 0) //Put an upper bound by accessing memory size?
+		return mips_ExceptionInvalidAddress;
+
+	state->pc = pc;
+
+	return mips_Success;
+}
+
+mips_error mips_cpu_get_pc(mips_cpu_h state, uint32_t *pc)
+{
+
+
+	*pc = state->pc;
+
+	return mips_Success;
+}
+
 mips_error mips_cpu_step(mips_cpu_h state)
 {
 	uint32_t pc=state->pc;
@@ -78,9 +103,63 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 	//TODO: Here is where the magic happens
 	// - Fetch the instruction from memory (mips_mem_read)
+	uint8_t encoding_bytes[4];
+	mips_error err = mips_mem_read(state->mem, pc, 4, encoding_bytes);
+
+	//Reversing the order of the bytes
+	uint8_t temp;
+	unsigned i;
+	for (i = 0; i < 2; i++)    
+	{
+		temp = encoding_bytes[4 - i - 1];
+		encoding_bytes[4 - i - 1] = encoding_bytes[i];
+		encoding_bytes[i] = temp;
+	}
+
 	// - Decode the instruction (is it R, I, J)?
+	char type;
+	if (encoding_bytes[0] & 0xFC == 0) // first byte & 1111 1100: if any of first 6 bits are 1, it is not r type
+		type = 'r';
+	else if (encoding_bytes[0] & 0xF0 == 0)// first 8 bytes & 1111 0000: if any of the first 4 bits are 1, it is not j type
+		type = 'j';
+	else
+		type = 'i';
+	
+
+	std::string instruction;
+	if (type == 'r')
+	{
+		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
+
+		if (func == 0x24)//0010 0100 AND
+			instruction = "AND";
+	}
 	// - Execute the instruction (do maths, access memory, ...)
-	// - Writeback the results (update registers, advance pc)
+
+	uint32_t encoding = encoding_bytes[0];
+	encoding += encoding_bytes[1] << 8;
+	encoding += encoding_bytes[2] << 16;
+	encoding += encoding_bytes[3] << 24;
+
+	/********** r type *************/
+	if (instruction == "AND")
+	{
+		uint32_t rs = encoding >> 21; // extract first 5 bit source register. No need to shift left as opcode will be all 0's anyway
+		mips_error err = mips_cpu_get_register(state, rs, &rs);
+
+		uint32_t rt = (encoding >> 16) & 0x5; // extract second 5 bit source register. 
+		err = mips_cpu_get_register(state, rt, &rt);
+
+		// - Writeback the results (update registers, advance pc)
+		uint32_t rd = (encoding >> 11) & 0x5; // extract 5 bit destination register. 
+		err = mips_cpu_set_register(state, rd, rs&rt);
+
+		state->pc += state->pcN;
+
+		if (!err)
+			return mips_Success;
+	}
+	
 
 	return mips_ErrorNotImplemented;
 }
