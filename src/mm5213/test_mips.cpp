@@ -13,7 +13,7 @@ int main()
 
 	mips_test_begin_suite();
 
-	uint32_t address = 0;
+	uint32_t address = 0x0;
 
 	int testId = mips_test_begin_test("and");
 	int passed = 0;
@@ -42,7 +42,7 @@ int main()
 	}
 	// TODO : Make sure the program-counter is at that address
 	
-	address += 4;
+	address += 0x4;
 
 	if(!err)
 		err=mips_cpu_step(cpu);
