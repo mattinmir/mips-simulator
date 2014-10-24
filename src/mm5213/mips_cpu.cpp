@@ -101,8 +101,8 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	if(state==0)
 		return mips_ErrorInvalidHandle;
 
-	//TODO: Here is where the magic happens
-	// - Fetch the instruction from memory (mips_mem_read)
+	
+	// - Fetch the instruction from memory 
 	uint8_t encoding_bytes[4];
 	mips_error err = mips_mem_read(state->mem, pc, 4, encoding_bytes);
 
@@ -127,38 +127,37 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	else
 		type = 'i';
 	
-
-	std::string instruction;
+	//Decode the operation of the instruction
+	std::string operation;
 	if (type == 'r')
 	{
 		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
 
 		if (func == 0x24)//0010 0100 AND
-			instruction = "AND";
+			operation = "AND";
 	}
-	// - Execute the instruction (do maths, access memory, ...)
 
-
-
+	// - Execute the instruction 
 	/********** r type *************/
-	if (instruction == "AND")
+	if (operation == "AND")
 	{
-		uint32_t rs = encoding >> 21; // extract first 5 bit source register. No need to shift left as opcode will be all 0's anyway
+		uint32_t rs = encoding >> 21; // extract first 5 bit source register
 		mips_error err = mips_cpu_get_register(state, rs, &rs);
 
-		uint32_t rt = (encoding >> 16) & 0x1F; // extract second 5 bit source register. 
+		uint32_t rt = (encoding >> 16) & 0x1F; // extract second 5 bit source register
 		err = mips_cpu_get_register(state, rt, &rt);
 
 		// - Writeback the results (update registers, advance pc)
-		uint32_t rd = (encoding >> 11) & 0x1F; // extract 5 bit destination register. 
+		uint32_t rd = (encoding >> 11) & 0x1F; // extract 5 bit destination register
 		err = mips_cpu_set_register(state, rd, rs&rt);
 
-		uint32_t r10;
-		err = mips_cpu_get_register(state, 10, &r10);
+		
 		state->pc += state->pcN;
 
 		if (!err)
 			return mips_Success;
+		else
+			return err;
 	}
 	
 

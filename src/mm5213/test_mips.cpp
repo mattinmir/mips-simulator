@@ -1,6 +1,5 @@
 #include "mips_test.h"
 #include "mips.h"
-#include <assert.h>
 
 
 int main()
@@ -23,33 +22,24 @@ int main()
 	mips_error err = mips_cpu_set_register(cpu, 8, 0x0000FFFFul);
 	if(!err)
 		err = mips_cpu_set_register(cpu, 9, 0x00FFFF00ul);
-	//if (!err)
-	//{
-	//	uint32_t* reg8 = new uint32_t;
-	//	uint32_t* reg9 = new uint32_t;
 
-	//	err = mips_cpu_set_register(cpu, 10, *reg8 & *reg9);
 
-	//	delete reg8, reg9;
-	//}
-	
-	// TODO : work out the bit-wise encoding for the instruction.
 	if (!err)
 	{
-
-
 		uint8_t encoding[4] = { 0x24, 0x50, 0x09, 0x01 }; // and $10, $8, $9 : 0000 0001 0000 1001 0101 0000 0010 0100 (big endian)
 
-		// TODO : Write it into mempory at a known address
+		// Write encoding into memory at a known address
 		err = mips_mem_write(mem, address, 4, encoding);
 	}
+
 	// TODO : Make sure the program-counter is at that address
-	err = mips_cpu_set_pc(cpu, address);
-	/*if (!err)
-		err = mips_cpu_get_pc(cpu, &pc);*/
+	if (!err)
+		err = mips_cpu_set_pc(cpu, address);
+	
 	if (!err)
 		err = mips_cpu_step(cpu);
-	address += 0x4;
+
+	address += 4;
 
 	uint32_t got;
 	if(!err)
@@ -59,13 +49,12 @@ int main()
 
 	mips_test_end_test(testId, passed, NULL);
 
-
-
 	mips_test_end_suite();
 
 	mips_cpu_free(cpu);
 	cpu = 0;
 	mips_mem_free(mem);
+	mem = 0;
 
 	return 0;
 }
