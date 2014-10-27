@@ -2,6 +2,8 @@
 #include "mips_cpu_safe.h"
 #include <string>
 #include <stdlib.h>
+#include "mips_cpu_helpers.h"
+#include "mips_cpu_r.h"
 
 struct mips_cpu_impl
 {
@@ -127,39 +129,92 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	else
 		type = 'i';
 	
-	//Decode the operation of the instruction
+	//Decode the operation of the instruction and execute
 	std::string operation;
 	if (type == 'r')
 	{
 		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
+		uint32_t rs, rt;
 
-		if (func == 0x24)//0010 0100 AND
-			operation = "AND";
+		if (func == 0x20)// 10 0000 ADD
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			if (signed_overflow(rs, rt, rs + rt))
+				return mips_ExceptionArithmeticOverflow;
+			err = set_dest_reg_r(state, encoding, rs + rt);
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+
+		else if (func == 0x21)// 10 0001 ADDU
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			err = set_dest_reg_r(state, encoding, rs + rt);
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+		else if (func == 0x24)//10 0100 AND
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			err = set_dest_reg_r(state, encoding, rs & rt);
+
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+		else if (func == 0x25)//10 0101 OR
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			err = set_dest_reg_r(state, encoding, rs | rt);
+
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+		else if (func == 0x23)//10 0011 SUBU
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			err = set_dest_reg_r(state, encoding, rs - rt);
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+		else if (func == 0x26)//10 0110 XOR
+		{
+			err = get_source_regs_r(state, rs, rt, encoding);
+			err = set_dest_reg_r(state, encoding, rs^rt);
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
 	}
 
-	// - Execute the instruction 
-	/********** r type *************/
-	if (operation == "AND")
-	{
-		uint32_t rs = encoding >> 21; // extract first 5 bit source register
-		mips_error err = mips_cpu_get_register(state, rs, &rs);
-
-		uint32_t rt = (encoding >> 16) & 0x1F; // extract second 5 bit source register
-		err = mips_cpu_get_register(state, rt, &rt);
-
-		// - Writeback the results (update registers, advance pc)
-		uint32_t rd = (encoding >> 11) & 0x1F; // extract 5 bit destination register
-		err = mips_cpu_set_register(state, rd, rs&rt);
-
-		
-		state->pc += state->pcN;
-
-		if (!err)
-			return mips_Success;
-		else
-			return err;
-	}
-	
 
 	return mips_ErrorNotImplemented;
 }
