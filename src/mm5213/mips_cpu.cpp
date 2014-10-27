@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include "mips_cpu_helpers.h"
 #include "mips_cpu_r.h"
+#include "mips_cpu_i.h"
+
 
 struct mips_cpu_impl
 {
@@ -135,10 +137,11 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	{
 		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
 		uint32_t rs, rt;
+		err = get_source_regs_r(state, rs, rt, encoding);
 
 		if (func == 0x20)// 10 0000 ADD
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
+			
 			if (signed_overflow(rs, rt, rs + rt))
 				return mips_ExceptionArithmeticOverflow;
 			err = set_dest_reg_r(state, encoding, rs + rt);
@@ -153,7 +156,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 		else if (func == 0x21)// 10 0001 ADDU
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
+			
 			err = set_dest_reg_r(state, encoding, rs + rt);
 
 			state->pc += state->pcN;
@@ -165,7 +168,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 		else if (func == 0x24)//10 0100 AND
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
+			
 			err = set_dest_reg_r(state, encoding, rs & rt);
 
 
@@ -178,7 +181,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 		else if (func == 0x25)//10 0101 OR
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
+			
 			err = set_dest_reg_r(state, encoding, rs | rt);
 
 
@@ -191,7 +194,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 		else if (func == 0x23)//10 0011 SUBU
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
+			
 			err = set_dest_reg_r(state, encoding, rs - rt);
 
 			state->pc += state->pcN;
@@ -203,8 +206,30 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 		else if (func == 0x26)//10 0110 XOR
 		{
-			err = get_source_regs_r(state, rs, rt, encoding);
 			err = set_dest_reg_r(state, encoding, rs^rt);
+
+			state->pc += state->pcN;
+
+			if (!err)
+				return mips_Success;
+			else
+				return err;
+		}
+	}
+
+	else if (type == 'i')
+	{
+		uint32_t imm = encoding & 0xFFFF;
+		uint32_t opcode = encoding_bytes[0] >> 2;
+		uint32_t rs;
+		err = get_source_reg_i(state, rs, encoding);
+
+		if (opcode == 0x8) // ADDI
+		{
+			if (signed_overflow(rs, imm, rs + imm))
+				return mips_ExceptionArithmeticOverflow;
+
+			set_dest_reg_i(state, encoding, rs + imm);
 
 			state->pc += state->pcN;
 
