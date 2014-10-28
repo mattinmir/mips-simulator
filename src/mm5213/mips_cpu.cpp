@@ -107,6 +107,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 	
 	// - Fetch the instruction from memory 
+
 	uint8_t encoding_bytes[4];
 	mips_error err = mips_mem_read(state->mem, pc, 4, encoding_bytes);
 
