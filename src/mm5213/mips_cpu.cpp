@@ -133,114 +133,118 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		type = 'i';
 	
 	//Decode the operation of the instruction and execute
-	std::string operation;
 	if (type == 'r')
 	{
 		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
 		uint32_t rs, rt;
 		err = get_source_regs_r(state, rs, rt, encoding);
 
-		if (func == 0x20)// 10 0000 ADD
+		switch (func)
 		{
+		case 0x20: // 10 0000 ADD
 			
 			if (signed_overflow(rs, rt, rs + rt))
 				return mips_ExceptionArithmeticOverflow;
+
 			err = set_dest_reg_r(state, encoding, rs + rt);
-
 			state->pc += state->pcN;
-
-			if (!err)
-				return mips_Success;
-			else
-				return err;
-		}
-
-		else if (func == 0x21)// 10 0001 ADDU
-		{
+			break;
 			
+		case 0x21: // 10 0001 ADDU
+
 			err = set_dest_reg_r(state, encoding, rs + rt);
-
 			state->pc += state->pcN;
+			break;
 
-			if (!err)
-				return mips_Success;
-			else
-				return err;
-		}
-		else if (func == 0x24)//10 0100 AND
-		{
-			
+		case 0x24: //10 0100 AND
+
 			err = set_dest_reg_r(state, encoding, rs & rt);
-
-
 			state->pc += state->pcN;
-
-			if (!err)
-				return mips_Success;
-			else
-				return err;
-		}
-		else if (func == 0x25)//10 0101 OR
-		{
+			break;
 			
+		case 0x25: //10 0101 OR
+	
 			err = set_dest_reg_r(state, encoding, rs | rt);
-
-
 			state->pc += state->pcN;
+			break;
+		
+		case 0x23: //10 0011 SUBU
 
-			if (!err)
-				return mips_Success;
-			else
-				return err;
-		}
-		else if (func == 0x23)//10 0011 SUBU
-		{
-			
 			err = set_dest_reg_r(state, encoding, rs - rt);
-
 			state->pc += state->pcN;
-
-			if (!err)
-				return mips_Success;
-			else
-				return err;
-		}
-		else if (func == 0x26)//10 0110 XOR
-		{
-			err = set_dest_reg_r(state, encoding, rs^rt);
-
+			break;
+			
+		case 0x26: //10 0110 XOR
+			
+			err = set_dest_reg_r(state, encoding, rs ^ rt);
 			state->pc += state->pcN;
-
-			if (!err)
-				return mips_Success;
-			else
-				return err;
+			break;
 		}
+
 	}
 
 	else if (type == 'i')
 	{
-		uint32_t imm = encoding & 0xFFFF;
+		uint16_t imm = encoding & 0xFFFF;
 		uint32_t opcode = encoding_bytes[0] >> 2;
 		uint32_t rs;
 		err = get_source_reg_i(state, rs, encoding);
 
-		if (opcode == 0x8) // ADDI
+		switch (opcode)
 		{
+		case 0x8: // 0010 00 ADDI
+			
 			if (signed_overflow(rs, imm, rs + imm))
 				return mips_ExceptionArithmeticOverflow;
 
 			set_dest_reg_i(state, encoding, rs + imm);
-
 			state->pc += state->pcN;
+			break;
 
-			if (!err)
-				return mips_Success;
-			else
-				return err;
+		case 0x9: // 0010 01 ADDIU
+			
+			set_dest_reg_i(state, encoding, rs + imm);
+			state->pc += state->pcN;
+			break;
+				
+		case 0xC: // 0011 00 ANDI
+			
+			imm = (uint32_t)imm; // Zero extension
+
+			set_dest_reg_i(state, encoding, rs & imm);
+			state->pc += state->pcN;
+			break;
+
+		case 0xF: // 0011 11 LUI
+
+			imm = (uint32_t)imm; // Zero extension
+
+			set_dest_reg_i(state, encoding, imm << 16);
+			state->pc += state->pcN;
+			break;
+
+		case 0xD: // 0011 01 ORI
+			
+			imm = (uint32_t)imm; // Zero extension
+
+			set_dest_reg_i(state, encoding, rs | imm);
+			state->pc += state->pcN;
+			break;
+
+		case 0xE: // 0011 10 XORI
+
+			imm = (uint32_t)imm; // Zero extension
+
+			set_dest_reg_i(state, encoding, rs ^ imm);
+			state->pc += state->pcN;
+			break;
 		}
 	}
 
+	if (!err)
+		return mips_Success;
+	else
+		return err;
 
-	return mips_ErrorNotImplemented;
+	//return mips_ErrorNotImplemented;
 }
