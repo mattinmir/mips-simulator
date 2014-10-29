@@ -136,8 +136,11 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	if (type == 'r')
 	{
 		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
-		uint32_t rs, rt;
+		uint32_t rs; // Source 1 
+		uint32_t rt; // Source 2
 		err = get_source_regs_r(state, rs, rt, encoding);
+		uint32_t sa; // Shift Amount
+		sa = (encoding >> 6) & 0x1F;
 
 		switch (func)
 		{
@@ -146,7 +149,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (signed_overflow(rs, rt, rs + rt))
 				return mips_ExceptionArithmeticOverflow;
 
-			err = set_dest_reg_r(state, encoding, rs + rt);
+			err = set_dest_reg_r(state, encoding, (signed)rs + (signed)rt);
 			state->pc += state->pcN;
 			break;
 			
@@ -167,7 +170,41 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			err = set_dest_reg_r(state, encoding, rs | rt);
 			state->pc += state->pcN;
 			break;
-		
+
+		case 0x2A: // 10 1010 SLT
+
+			if ((signed)rs < (signed)rt)
+				err = set_dest_reg_r(state, encoding, 0x1);
+			else
+				err = set_dest_reg_r(state, encoding, 0);
+
+			state->pc += state->pcN;
+			break;
+
+		case 0x03: // 00 0011 SRA
+
+			if (rs != 0) // rs must be 00000 for sra
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, (int32_t)rt >> sa); // Arithmetic shift when >> used with signed operand
+			state->pc += state->pcN;
+			break;
+
+		case 0x02: // 00 0010 SRL
+
+			if (rs != 0) // rs must be 00000 for srl
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, rt >> sa);
+			state->pc += state->pcN;
+			break;
+
+		case 0x06: // 00 0110 SRLV
+
+			err = set_dest_reg_r(state, encoding, rt >> rs);
+			state->pc += state->pcN;
+			break;
+
 		case 0x23: //10 0011 SUBU
 
 			err = set_dest_reg_r(state, encoding, rs - rt);
@@ -187,7 +224,8 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	{
 		uint16_t imm = encoding & 0xFFFF;
 		uint32_t opcode = encoding_bytes[0] >> 2;
-		uint32_t rs;
+		uint32_t rs; // Source reg
+		
 		err = get_source_reg_i(state, rs, encoding);
 
 		switch (opcode)
@@ -197,7 +235,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (signed_overflow(rs, imm, rs + imm))
 				return mips_ExceptionArithmeticOverflow;
 
-			set_dest_reg_i(state, encoding, rs + imm);
+			set_dest_reg_i(state, encoding, (signed)rs + (signed)imm);
 			state->pc += state->pcN;
 			break;
 
