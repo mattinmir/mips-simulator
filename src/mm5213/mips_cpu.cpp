@@ -186,7 +186,9 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (rs != 0) // rs must be 00000 for sra
 				return mips_ExceptionInvalidInstruction;
 
-			err = set_dest_reg_r(state, encoding, (int32_t)rt >> sa); // Arithmetic shift when >> used with signed operand
+			
+			
+			err = set_dest_reg_r(state, encoding, sra(rt, 4));
 			state->pc += state->pcN;
 			break;
 
