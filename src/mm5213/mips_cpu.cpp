@@ -12,7 +12,8 @@ struct mips_cpu_impl
 	uint32_t pc;
 	uint32_t pcN;
 	uint32_t regs[32];
-
+	uint32_t hi;
+	uint32_t lo;
 	mips_mem_h mem;
 };
 
@@ -171,6 +172,24 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			state->pc += state->pcN;
 			break;
 
+		case 0x10: // 01 0000 MFHI
+
+			if (rs | rt) // rs and rt must both be 0
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, state->hi);
+			state->pc += state->pcN;
+			break;
+
+		case 0x12: // 01 0010 MFLO
+
+			if (rs | rt) // rs and rt must both be 0
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, state->lo);
+			state->pc += state->pcN;
+			break;
+			
 		case 0x2A: // 10 1010 SLT
 
 			if ((signed)rs < (signed)rt)
@@ -291,6 +310,23 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 		case 0xD: // 0011 01 ORI
 			
+			imm = (int32_t)imm; // Sign extension
+
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
+
+			uint8_t word_bytes[2] = 
+			{
+				rt & 0xFF, // byte 0 of rt
+				(rt & 0xFF00) >> 8 //byte 1 of rt
+			};
+
+			mips_mem_write(state->mem, rs + imm, 2, word_bytes);
+			state->pc += state->pcN;
+			break;
+
+		case 0x29: // 1010 01 SH
+
 			imm = (uint32_t)imm; // Zero extension
 
 			set_dest_reg_i(state, encoding, rs | imm);

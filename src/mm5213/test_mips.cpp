@@ -270,8 +270,8 @@ int main()
 	testId = mips_test_begin_test("lw");
 	passed = 0;
 
-	uint8_t data[4] = { 0x01, 0x02, 0x03, 0x04 };
-	err = mips_mem_write(mem, 0x0001004, 4, data);
+	uint8_t word[4] = { 0x01, 0x02, 0x03, 0x04 };
+	err = mips_mem_write(mem, 0x0001004, 4, word);
 
 	if (!err)
 		err = mips_cpu_set_register(cpu, 8, 0x00001000ul);
@@ -367,6 +367,42 @@ int main()
 
 	if (!err)
 		err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+	passed = (err == mips_Success) && (got == 0x00000FFF);
+
+	mips_test_end_test(testId, passed, NULL);
+
+	/**************************************************************************************************/
+	/********************************************* SH *************************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	testId = mips_test_begin_test("sh");
+	passed = 0;
+
+	err = mips_cpu_set_register(cpu, 8, 0x00001000ul);
+	if (!err)
+		err = mips_cpu_set_register(cpu, 9, 0x00001234ul);
+
+	if (!err)
+	{
+		uint8_t encoding_bytes[4] = { 0x04, 0x00, 0x09, 0xA5 }; // sh $9, 4($8),  : 1010 0101 0000 1001 0000 0000 0000 0100 (encoding_bytes is big endian form of this)
+
+		// Write encoding into memory at a known address
+		err = mips_mem_write(mem, address, 4, encoding_bytes);
+	}
+
+	// Make sure the program-counter is at that address
+	if (!err)
+		err = mips_cpu_set_pc(cpu, address);
+
+	if (!err)
+		err = mips_cpu_step(cpu);
+
+	address += 4;
+	uint8_t halfword_bytes[2];
+	if (!err)
+		err = (mips_error)(err | mips_mem_read(mem, 0x1004, 2, &halfword_bytes);
 
 	passed = (err == mips_Success) && (got == 0x00000FFF);
 
