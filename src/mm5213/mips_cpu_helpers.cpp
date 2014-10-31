@@ -20,26 +20,8 @@ bool signed_overflow(uint32_t s, uint32_t t, uint32_t result)
 	return overflow;
 }
 
-void sign_extend(uint32_t &value)
+void sign_extend_16_to_32(uint16_t &value)
 {
 	value = (int32_t)((int16_t)value);
 }
 
-uint32_t sra(uint32_t rt, uint32_t sa)
-{
-	if (rt & 0x8000)
-	{
-		rt |= 0xFFFF0000;
-
-		for (int i = 0; i < sa; i++)
-		{
-			rt >>= 1;
-			rt |= 0x80000000;
-		}
-	}
-	else
-		rt >>= sa;
-
-	return rt;
-
-}

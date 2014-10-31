@@ -135,7 +135,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	//Decode the operation of the instruction and execute
 	if (type == 'r')
 	{
-		uint8_t func = (encoding_bytes[3] << 2) >> 2; //Shift out top 2 bits to leave func code
+		uint8_t func = encoding_bytes[3] & 0x3F; //Shift out top 2 bits to leave func code
 		uint32_t rs; // Source 1 
 		uint32_t rt; // Source 2
 		err = get_source_regs_r(state, rs, rt, encoding);
@@ -186,9 +186,18 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (rs != 0) // rs must be 00000 for sra
 				return mips_ExceptionInvalidInstruction;
 
-			
-			
-			err = set_dest_reg_r(state, encoding, sra(rt, 4));
+			if (rt & 0x80000000) // If negative, sign extend
+			{
+				for (int i = 0; i < sa; i++)
+				{
+					rt >>= 1;
+					rt |= 0x80000000;
+				}
+			}
+			else // If positive, zero extend
+				rt >>= sa;
+
+			err = set_dest_reg_r(state, encoding, rt);
 			state->pc += state->pcN;
 			break;
 
@@ -263,6 +272,23 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			state->pc += state->pcN;
 			break;
 
+		case 0x23: // 1000 11 LW
+		{
+			imm = (int32_t)imm; // Sign extension
+
+			if ((rs +imm) % 4)
+				return mips_ExceptionInvalidAlignment;
+
+			uint8_t word_bytes[4];
+			err = mips_mem_read(state->mem, rs + imm, 4, word_bytes);
+
+			//Big endian value will be taken from memory and stored in rt stil big endian
+			uint32_t word = (word_bytes[3]) | (word_bytes[2] << 8) | (word_bytes[1] << 16) | (word_bytes[0] << 24);
+
+			set_dest_reg_i(state, encoding, word);
+			state->pc += state->pcN;
+			break;
+		}
 		case 0xD: // 0011 01 ORI
 			
 			imm = (uint32_t)imm; // Zero extension

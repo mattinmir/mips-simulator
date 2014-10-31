@@ -263,6 +263,45 @@ int main()
 	mips_test_end_test(testId, passed, NULL);
 
 	/**************************************************************************************************/
+	/********************************************* LW ************************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	testId = mips_test_begin_test("lw");
+	passed = 0;
+
+	uint8_t data[4] = { 0x01, 0x02, 0x03, 0x04 };
+	err = mips_mem_write(mem, 0x0001004, 4, data);
+
+	if (!err)
+		err = mips_cpu_set_register(cpu, 8, 0x00001000ul);
+	
+
+	if (!err)
+	{
+		uint8_t encoding_bytes[4] = { 0x04, 0x00, 0x09, 0x8D }; // lw $9, 4($8) : 1000 1101 0000 1001 0000 0000 0000 0100 (encoding_bytes is big endian form of this)
+
+		// Write encoding into memory at a known address
+		err = mips_mem_write(mem, address, 4, encoding_bytes);
+	}
+
+	// Make sure the program-counter is at that address
+	if (!err)
+		err = mips_cpu_set_pc(cpu, address);
+
+	if (!err)
+		err = mips_cpu_step(cpu);
+
+	address += 4;
+
+	if (!err)
+		err = (mips_error)(err | mips_cpu_get_register(cpu, 9, &got));
+
+	passed = (err == mips_Success) && (got == 0x01020304);
+
+	mips_test_end_test(testId, passed, NULL);
+
+	/**************************************************************************************************/
 	/********************************************* OR *************************************************/
 	/**************************************************************************************************/
 
