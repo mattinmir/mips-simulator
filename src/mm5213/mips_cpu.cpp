@@ -52,7 +52,11 @@ mips_error mips_cpu_get_register(
 	if(value==0)
 		return mips_ErrorInvalidArgument;
 
-	*value = state->regs[index];
+	if (index == 0) // $0 must always be 0
+		*value = 0;
+	else
+		*value = state->regs[index];
+
 	return mips_Success;
 }
 
@@ -68,8 +72,10 @@ mips_error mips_cpu_set_register(
 	if(index>=32)
 		return mips_ErrorInvalidArgument;
 
-	// TODO : What about register zero?
-	state->regs[index]=value;
+	if (index == 0)
+		return mips_ErrorInvalidArgument; // Don't change $0
+	else
+		state->regs[index]=value;
 
 	return mips_Success;
 }
@@ -101,12 +107,14 @@ mips_error mips_cpu_get_pc(mips_cpu_h state, uint32_t *pc)
 
 mips_error mips_cpu_step(mips_cpu_h state)
 {
-	uint32_t pc=state->pc;
-
+	
 	if(state==0)
 		return mips_ErrorInvalidHandle;
 
-	
+	state->regs[0] = 0;
+	uint32_t pc=state->pc;
+
+
 	// - Fetch the instruction from memory 
 
 	uint8_t encoding_bytes[4];
@@ -189,7 +197,47 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			err = set_dest_reg_r(state, encoding, state->lo);
 			state->pc += state->pcN;
 			break;
-			
+
+		case 0x18: // 01 1000 MULT
+		{
+					   
+			rs = (int64_t)rs;
+			rt = (int64_t)rt;
+			uint64_t result = rs * rt;
+
+			state->lo = (uint32_t)(result & 0xFFFFFFFF);
+			state->hi = (uint32_t)((result & 0xFFFFFFFF00000000) >> 32);
+			state->pc += state->pcN;
+			break;
+		}
+
+		case 0x19: // 01 1001 MULTU
+		{
+			uint64_t result = (uint64_t)rs * (uint64_t)rt;
+
+			state->lo = (uint32_t)(result & 0xFFFFFFFF);
+			state->hi = (uint32_t)((result & 0xFFFFFFFF00000000) >> 32);
+			state->pc += state->pcN;
+			break;
+		}
+		case 0x00: // 00 0000 SLL
+
+			if (rs != 0) // rs must be 00000 for sll
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, rt << sa);
+			state->pc += state->pcN;
+			break;
+
+		case 0x04: // 00 0100 SLLV
+
+			if (sa != 0) // sa must be 00000 for sll
+				return mips_ExceptionInvalidInstruction;
+
+			err = set_dest_reg_r(state, encoding, rt << rs);
+			state->pc += state->pcN;
+			break;
+
 		case 0x2A: // 10 1010 SLT
 
 			if ((signed)rs < (signed)rt)
@@ -207,7 +255,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			if (rt & 0x80000000) // If negative, sign extend
 			{
-				for (int i = 0; i < sa; i++)
+				for (unsigned i = 0; i < sa; i++)
 				{
 					rt >>= 1;
 					rt |= 0x80000000;
@@ -291,6 +339,23 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			state->pc += state->pcN;
 			break;
 
+		case 0x24: // 1001 00 LBU
+		{
+			imm = (int32_t)imm; // Sign extension
+
+			unsigned int index = 3 - ((rs + imm) % 4); // 4-index to get big endian adress -- Not sure if I'm doing endianness correctly here
+			unsigned int address = rs + imm - ((rs + imm) % 4);
+			uint8_t word_bytes[4];
+			err = mips_mem_read(state->mem, address, 4, word_bytes);
+
+			//Big endian value will be taken from memory and stored in rt stil big endian
+			uint32_t word = word_bytes[index];
+
+			set_dest_reg_i(state, encoding, word);
+			state->pc += state->pcN;
+			break;
+		}
+
 		case 0x23: // 1000 11 LW
 		{
 			imm = (int32_t)imm; // Sign extension
@@ -301,7 +366,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			uint8_t word_bytes[4];
 			err = mips_mem_read(state->mem, rs + imm, 4, word_bytes);
 
-			//Big endian value will be taken from memory and stored in rt stil big endian
+			//Big endian value will be taken from memory and stored in rt still big endian
 			uint32_t word = (word_bytes[3]) | (word_bytes[2] << 8) | (word_bytes[1] << 16) | (word_bytes[0] << 24);
 
 			set_dest_reg_i(state, encoding, word);
@@ -309,27 +374,79 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			break;
 		}
 		case 0xD: // 0011 01 ORI
-			
+
+			imm = (uint32_t)imm; // Zero extension
+
+			set_dest_reg_i(state, encoding, rs | imm);
+			state->pc += state->pcN;
+			break;
+		
+		case 0x28: // 1010 00 SB
+		{
 			imm = (int32_t)imm; // Sign extension
 
 			uint32_t rt;
 			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
 
-			uint8_t word_bytes[2] = 
+			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
+			err = mips_cpu_get_register(state, rs + imm, &current_word);
+
+			uint8_t word_bytes[4] =
 			{
-				rt & 0xFF, // byte 0 of rt
-				(rt & 0xFF00) >> 8 //byte 1 of rt
+				(current_word & 0xFF000000) >> 24, // Byte 3 of current word
+				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
+				(current_word & 0xFF00) >> 8, // Byte 1 of current word
+				rt & 0xFF // byte 0 of rt
 			};
 
-			mips_mem_write(state->mem, rs + imm, 2, word_bytes);
+			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
+			state->pc += state->pcN;
+			break;
+		}
+
+		case 0x29: // 1010 01 SH
+		{
+			imm = (int32_t)imm; // Sign extension
+
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
+
+			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
+			err = mips_cpu_get_register(state, rs + imm, &current_word);
+
+			uint8_t word_bytes[4] =
+			{
+				(current_word & 0xFF000000) >> 24, // Byte 3 of current word
+				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
+				(rt & 0xFF00) >> 8, //byte 1 of rt
+				rt & 0xFF // byte 0 of rt
+			};
+
+			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
+			state->pc += state->pcN;
+			break;
+		}
+
+		case 0x0A: // 00 1010 SLTI
+
+			if ((signed)rs < (signed)imm)
+				err = set_dest_reg_i(state, encoding, 0x1);
+			else
+				err = set_dest_reg_i(state, encoding, 0);
+
 			state->pc += state->pcN;
 			break;
 
-		case 0x29: // 1010 01 SH
+		case 0x0B: // 00 1011 SLTIU
 
-			imm = (uint32_t)imm; // Zero extension
+			sign_extend_16_to_32(imm);
+			imm = (uint32_t)imm; // Spec states to sign extend then treat as unsigned.
 
-			set_dest_reg_i(state, encoding, rs | imm);
+			if (rs < imm)
+				err = set_dest_reg_i(state, encoding, 0x1);
+			else
+				err = set_dest_reg_i(state, encoding, 0);
+
 			state->pc += state->pcN;
 			break;
 
@@ -343,10 +460,6 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		}
 	}
 
-	if (!err)
-		return mips_Success;
-	else
-		return err;
+	return err;
 
-	//return mips_ErrorNotImplemented;
 }
