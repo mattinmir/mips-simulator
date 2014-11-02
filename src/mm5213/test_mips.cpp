@@ -454,6 +454,109 @@ int main()
 
 		mips_test_end_test(testId, passed, NULL);
 	}
+
+	///**************************************************************************************************/
+	///********************************************* BLTZ ***********************************************/
+	///**************************************************************************************************/
+
+	////--------------------------------------------- 1 ------------------------------------------------//
+	//{
+	//	uint32_t got;
+	//	testId = mips_test_begin_test("bltz");
+	//	passed = 0;
+
+	//	err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+	//	if (!err)
+	//		err = mips_cpu_set_register(cpu, 8, 0x00000001ul);
+
+
+	//	if (!err)
+	//	{
+	//		uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x00, 0x05 }; // bltz $8, 0x3000 : 0000 0101 0000 0000 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+	//		// Write encoding into memory at a known address
+	//		err = mips_mem_write(mem, address, 4, encoding_bytes);
+	//	}
+
+	//	if (!err)
+	//	{
+	//		uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+	//		// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+	//		err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+	//	}
+
+	//	//  Make sure the program-counter is at that address
+	//	if (!err)
+	//		err = mips_cpu_set_pc(cpu, address);
+
+	//	if (!err)
+	//		err = mips_cpu_step(cpu);
+
+	//	// Result of the addiu instruction
+	//	if (!err)
+	//		err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+	//	uint32_t new_pc;
+	//	if (!err)
+	//		err = mips_cpu_get_pc(cpu, &new_pc);
+	//	// new_pc should be the address of the instruction after the branch delay instruction (address + 8) with no offset as the condition was not satisfied
+	//	passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 8));
+
+	//	address += 8; // Skip forward twice as we executed 2 instructions
+
+	//	mips_test_end_test(testId, passed, NULL);
+	//}
+
+	////--------------------------------------------- 2 ------------------------------------------------//
+	//{
+	//	uint32_t got;
+	//	testId = mips_test_begin_test("bltz");
+	//	passed = 0;
+
+	//	err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+	//	if (!err)
+	//		err = mips_cpu_set_register(cpu, 8, 0xFFFFFFFFul);
+
+
+	//	if (!err)
+	//	{
+	//		uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x00, 0x05 }; // bltz $8, 0x3000 : 0000 0101 0000 0000 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+	//		// Write encoding into memory at a known address
+	//		err = mips_mem_write(mem, address, 4, encoding_bytes);
+	//	}
+
+	//	if (!err)
+	//	{
+	//		uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+	//		// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+	//		err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+	//	}
+
+	//	//  Make sure the program-counter is at that address
+	//	if (!err)
+	//		err = mips_cpu_set_pc(cpu, address);
+
+	//	if (!err)
+	//		err = mips_cpu_step(cpu);
+
+	//	// Result of the addiu instruction
+	//	if (!err)
+	//		err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+	//	uint32_t new_pc;
+	//	if (!err)
+	//		err = mips_cpu_get_pc(cpu, &new_pc);
+
+	//	// new_pc should be the address of the instruction after the branch (address + 4) plus the offset shifted left 2 bits (0x3000 << 2 == 0xC000)
+	//	passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 4 + 0x0000C000));
+
+	//	address += 8; // Skip forward twice as we executed 2 instructions
+
+	//	mips_test_end_test(testId, passed, NULL);
+	//}
 	/**************************************************************************************************/
 	/********************************************* DIV ************************************************/
 	/**************************************************************************************************/

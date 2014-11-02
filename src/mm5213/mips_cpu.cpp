@@ -151,58 +151,70 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		switch (func)
 		{
 		case 0x20: // 10 0000 ADD
-			
+
 			if (signed_overflow(rs, rt, rs + rt))
 				return mips_ExceptionArithmeticOverflow;
 
 			err = set_dest_reg_r(state, encoding, (int32_t)rs + (int32_t)rt);
-			state->pc += state->pcN;
+			
 			break;
 			
 		case 0x21: // 10 0001 ADDU
 
 			err = set_dest_reg_r(state, encoding, rs + rt);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x24: //10 0100 AND
 
 			err = set_dest_reg_r(state, encoding, rs & rt);
-			state->pc += state->pcN;
+			
 			break;
 			
 		case 0x1A: // 01 1010 DIV
 		{
-			if (rt == 0)
-				return mips_ErrorInvalidArgument;
+			if (rt != 0)
+			{
+				// Unsure about whether the remainder should be -ve or +ve when dividing a -ve number: This gives a -ve remainder
+				int32_t remainder = (int32_t)rs % (int32_t)rt;
+				int32_t quotient = (int32_t)rs / (int32_t)rt;
 
-			// Unsure about whether the remainder should be -ve or +ve when dividing a -ve number: This gives a -ve remainder
-			int32_t remainder = (int32_t)rs % (int32_t)rt;
-			int32_t quotient = (int32_t)rs / (int32_t)rt;
+				state->lo = (uint32_t)quotient;
+				state->hi = (uint32_t)remainder;
+			}
 
-			state->lo = (uint32_t)quotient;
-			state->hi = (uint32_t)remainder;
-			state->pc += state->pcN;
+			else
+			{
+				state->lo = 0;
+				state->hi = 0;
+			}
+
 			break;
 		}
 		case 0x1B: // 01 1011 DIVU
 		{
-			if (rt == 0)
-				return mips_ErrorInvalidArgument;
+			if (rt != 0)
+			{
+				uint32_t remainder = rs % rt;
+				uint32_t quotient = rs / rt;
 
-			uint32_t remainder = rs % rt;
-			uint32_t quotient = rs / rt;
+				state->lo = quotient;
+				state->hi = remainder;
+			}
 
-			state->lo = quotient;
-			state->hi = remainder;
-			state->pc += state->pcN;
+			else
+			{
+				state->lo = 0;
+				state->hi = 0;
+			}
+
 			break;
 		}
 
 		case 0x25: //10 0101 OR
 	
 			err = set_dest_reg_r(state, encoding, rs | rt);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x10: // 01 0000 MFHI
@@ -210,10 +222,9 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (rs | rt) // rs and rt must both be 0
 				return mips_ExceptionInvalidInstruction;
 
-			
-
+	
 			err = set_dest_reg_r(state, encoding, state->hi);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x12: // 01 0010 MFLO
@@ -222,7 +233,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				return mips_ExceptionInvalidInstruction;
 
 			err = set_dest_reg_r(state, encoding, state->lo);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x18: // 01 1000 MULT
@@ -232,7 +243,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			state->lo = (int32_t)(result & 0xFFFFFFFF);
 			state->hi = (int32_t)((result & 0xFFFFFFFF00000000) >> 32);
-			state->pc += state->pcN;
+			
 			break;
 		}
 
@@ -242,7 +253,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			state->lo = (uint32_t)(result & 0xFFFFFFFF);
 			state->hi = (uint32_t)((result & 0xFFFFFFFF00000000) >> 32);
-			state->pc += state->pcN;
+			
 			break;
 		}
 		case 0x00: // 00 0000 SLL
@@ -251,7 +262,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				return mips_ExceptionInvalidInstruction;
 
 			err = set_dest_reg_r(state, encoding, rt << sa);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x04: // 00 0100 SLLV
@@ -260,7 +271,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				return mips_ExceptionInvalidInstruction;
 
 			err = set_dest_reg_r(state, encoding, rt << rs);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x2A: // 10 1010 SLT
@@ -270,7 +281,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			else
 				err = set_dest_reg_r(state, encoding, 0);
 
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x2B: // 10 1011 SLTU
@@ -280,7 +291,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			else
 				err = set_dest_reg_r(state, encoding, 0);
 
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x03: // 00 0011 SRA
@@ -300,7 +311,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				rt >>= sa;
 
 			err = set_dest_reg_r(state, encoding, rt);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x02: // 00 0010 SRL
@@ -309,25 +320,25 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				return mips_ExceptionInvalidInstruction;
 
 			err = set_dest_reg_r(state, encoding, rt >> sa);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x06: // 00 0110 SRLV
 
 			err = set_dest_reg_r(state, encoding, rt >> rs);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x23: //10 0011 SUBU
 
 			err = set_dest_reg_r(state, encoding, rs - rt);
-			state->pc += state->pcN;
+			
 			break;
 			
 		case 0x26: //10 0110 XOR
 			
 			err = set_dest_reg_r(state, encoding, rs ^ rt);
-			state->pc += state->pcN;
+			
 			break;
 
 		default:
@@ -351,13 +362,13 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				return mips_ExceptionArithmeticOverflow;
 
 			set_dest_reg_i(state, encoding, (int32_t)rs + (int32_t)imm);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x9: // 0010 01 ADDIU
 			
 			set_dest_reg_i(state, encoding, rs + imm);
-			state->pc += state->pcN;
+			
 			break;
 				
 		case 0xC: // 0011 00 ANDI
@@ -365,7 +376,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			imm = (uint32_t)imm; // Zero extension
 
 			set_dest_reg_i(state, encoding, rs & imm);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x4: // 0001 00 BEQ
@@ -375,42 +386,98 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			int32_t offset = (int32_t)imm << 2;
 
-			// Execute the next instruction (stored in the branch delay slot)
-			state->pc += state->pcN;
-			mips_cpu_step(state);
+			// Reset pcN in case previous instruction inflated it 
+			state->pcN = state->pc + 4;
 
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4; 
+
+			err = mips_cpu_step(state); 
+			/* 
+			You might think that since we are incrementing the pc then stepping the cpu that the
+			pc will increment twice, as we perform an increment at the end of each step. However,
+			what we actually do at the end of the step is set pc to pcN, then increment pcN. Usually,
+			this would increment the pc because pcN would have been incremented in the previous step.
+			But here we are incrementing pc directly and not changing pcN, so when the branch delay 
+			instruction reaches the end of its step, pc will equal pcN, so setting pc to the value of 
+			pcN changes nothing, and we are still at the same address, with pcN now pointing to the next
+			instruction in memory.
+
+			If the condition is satisfied, the code below will move pcN to the branch location, if not,
+			then pcN is already pointing to the next instruction, and that value will be put into pc at
+			the end of this branch instruction's step.
+			*/
 			if (rs == rt)
-				state->pc += offset - 4; //-4 because the branch delay instruction will increment the pc by 4 itself, so we want to negate that
+				state->pcN += offset - 4;
 
 			break;
 		}
 
-		case 0x1: // REGIMM == 0000 01 : Branches comparing to zero
+		case 0x1: // REGIMM == 0000 01 : BGEZ/BGEZAL/BLTZ/BLTZAL
 		{
+			int32_t offset = (int32_t)imm << 2;
 			uint32_t rt = (encoding >> 16) & 0x1F;
 			switch (rt)
 			{
 			case 0x01: // 0000 01 BGEZ
 
-				int32_t offset = (int32_t)imm << 2;
+				// Reset pcN in case previous instruction inflated it 
+				state->pcN = state->pc + 4;
 
-				// Execute the next instruction (stored in the branch delay slot)
-				state->pc += state->pcN;
-				mips_cpu_step(state);
+				// Increment pc to execute the next instruction (stored in the branch delay slot)
+				state->pc += 4;
 
-				if ((rs & 0x80000000) == 0)
-					state->pc += offset - 4; //-4 because the branch delay instruction will increment the pc by 4 itself, so we want to negate that
+				err = mips_cpu_step(state);
+				
+				if ((int32_t)rs >= 0)
+					state->pcN += offset - 4;
 
 				break;
+
+			case 0x11: // 1000 01 BGEZAL
+				return mips_ErrorNotImplemented;
+				break;
+			
+			case 0x00: //0000 00 BLTZ
+
+				// Reset pcN in case previous instruction inflated it 
+				state->pcN = state->pc + 4;
+
+				// Increment pc to execute the next instruction (stored in the branch delay slot)
+				state->pc += 4;
+
+				err = mips_cpu_step(state);
+
+				if ((int32_t)rs < 0)
+					state->pcN += offset - 4;
+				break;
+
+			case 0x20: //1000 00 BLTZAL
+				return mips_ErrorNotImplemented;
+				break;
+
 			}
+			break;
 		}
-		
+
+		case 0x07: // 0001 11 BGTZ
+			return mips_ErrorNotImplemented;
+			break;
+
+		case 0x06: // 0001 10 BLEZ
+			return mips_ErrorNotImplemented;
+			break;
+
+		case 0x05: // 0001 01 BNE
+			return mips_ErrorNotImplemented;
+			break;
+
 		case 0xF: // 0011 11 LUI
 
 			imm = (uint32_t)imm; // Zero extension
 
 			set_dest_reg_i(state, encoding, imm << 16);
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x24: // 1001 00 LBU
@@ -426,7 +493,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			uint32_t word = word_bytes[index];
 
 			set_dest_reg_i(state, encoding, word);
-			state->pc += state->pcN;
+			
 			break;
 		}
 
@@ -444,7 +511,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			uint32_t word = (word_bytes[3]) | (word_bytes[2] << 8) | (word_bytes[1] << 16) | (word_bytes[0] << 24);
 
 			set_dest_reg_i(state, encoding, word);
-			state->pc += state->pcN;
+			
 			break;
 		}
 		case 0xD: // 0011 01 ORI
@@ -452,7 +519,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			imm = (uint32_t)imm; // Zero extension
 
 			set_dest_reg_i(state, encoding, rs | imm);
-			state->pc += state->pcN;
+			
 			break;
 		
 		case 0x28: // 1010 00 SB
@@ -474,7 +541,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			};
 
 			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
-			state->pc += state->pcN;
+			
 			break;
 		}
 
@@ -497,7 +564,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			};
 
 			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
-			state->pc += state->pcN;
+			
 			break;
 		}
 
@@ -508,7 +575,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			else
 				err = set_dest_reg_i(state, encoding, 0);
 
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0x0B: // 00 1011 SLTIU
@@ -521,7 +588,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			else
 				err = set_dest_reg_i(state, encoding, 0);
 
-			state->pc += state->pcN;
+			
 			break;
 
 		case 0xE: // 0011 10 XORI
@@ -529,7 +596,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			imm = (uint32_t)imm; // Zero extension
 
 			set_dest_reg_i(state, encoding, rs ^ imm);
-			state->pc += state->pcN;
+			
 			break;
 
 		default:
@@ -542,6 +609,9 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		uint8_t opcode = encoding_bytes[0] >> 2;
 		uint32_t address = encoding & 0x3FFFFFF;
 	}
+
+	state->pc = state->pcN;
+	state->pcN += 4;
 	return err;
 
 }
