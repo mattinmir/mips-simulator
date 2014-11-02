@@ -131,43 +131,7 @@ int main()
 
 		mips_test_end_test(testId, passed, NULL);
 	}
-	/**************************************************************************************************/
-	/********************************************* ANDI ***********************************************/
-	/**************************************************************************************************/
-
-	//--------------------------------------------- 1 ------------------------------------------------//
-	{
-		uint32_t got;
-		testId = mips_test_begin_test("andi");
-		passed = 0;
-
-		err = mips_cpu_set_register(cpu, 8, 0x000000FFul);
-
-
-		if (!err)
-		{
-			uint8_t encoding_bytes[4] = { 0xF0, 0x00, 0xA, 0x31 }; // andi $10, $8, 0xF0 : 0011 0001 0000 1010 0000 0000 1111 0000 (encoding_bytes is big endian form of this)
-
-			// Write encoding into memory at a known address
-			err = mips_mem_write(mem, address, 4, encoding_bytes);
-		}
-
-		// Make sure the program-counter is at that address
-		if (!err)
-			err = mips_cpu_set_pc(cpu, address);
-
-		if (!err)
-			err = mips_cpu_step(cpu);
-
-		address += 4;
-
-		if (!err)
-			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
-
-		passed = (err == mips_Success) && (got == 0x000000F0);
-
-		mips_test_end_test(testId, passed, NULL);
-	}
+	
 	/**************************************************************************************************/
 	/********************************************* ADDU ***********************************************/
 	/**************************************************************************************************/
@@ -242,6 +206,382 @@ int main()
 			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
 
 		passed = (err == mips_Success) && (got == 0x0000FF00);
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+	/**************************************************************************************************/
+	/********************************************* ANDI ***********************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	{
+		uint32_t got;
+		testId = mips_test_begin_test("andi");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 8, 0x000000FFul);
+
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0xF0, 0x00, 0xA, 0x31 }; // andi $10, $8, 0xF0 : 0011 0001 0000 1010 0000 0000 1111 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		// Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+		passed = (err == mips_Success) && (got == 0x000000F0);
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+
+	/**************************************************************************************************/
+	/********************************************* BEQ ************************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	{
+		uint32_t got;
+		testId = mips_test_begin_test("beq");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 8, 0x000000FFul);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 9, 0x000000FFul);
+
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x9, 0x11 }; // beq $8, $9 0x3000 : 0001 0001 0000 1001 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+			// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+			err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		// Result of the addiu instruction
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+		uint32_t new_pc;
+		if (!err)
+			err = mips_cpu_get_pc(cpu, &new_pc);
+		// new_pc should be the address of the instruction after the branch (address + 4) plus the offset shifted left 2 bits (0x3000 << 2 == 0xC000)
+		passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 4 + 0x0000C000));
+
+		address += 8; // Skip forward twice as we executed 2 instructions
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+
+	//--------------------------------------------- 2 ------------------------------------------------//
+	{
+		uint32_t got;
+		testId = mips_test_begin_test("beq");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 8, 0x000000FFul);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 9, 0x00000012ul);
+
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x9, 0x11 }; // beq $8, $9 0x3000 : 0001 0001 0000 1001 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+			// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+			err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		// Result of the addiu instruction
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+		uint32_t new_pc;
+		if (!err)
+			err = mips_cpu_get_pc(cpu, &new_pc);
+		// new_pc should be the address of the instruction after the branch delay instruction (address + 8) with no offset as the condition was not satisfied
+		passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 8));
+
+		address += 8; // Skip forward twice as we executed 2 instructions
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+	/**************************************************************************************************/
+	/********************************************* BGEZ **********************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	{
+		uint32_t got;
+		testId = mips_test_begin_test("bgez");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 8, 0x00000001ul);
+
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x01, 0x05 }; // bgez $8, 0x3000 : 0000 0101 0000 0001 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+			// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+			err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		// Result of the addiu instruction
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+		uint32_t new_pc;
+		if (!err)
+			err = mips_cpu_get_pc(cpu, &new_pc);
+		// new_pc should be the address of the instruction after the branch (address + 4) plus the offset shifted left 2 bits (0x3000 << 2 == 0xC000)
+		passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 4 + 0x0000C000));
+
+		address += 8; // Skip forward twice as we executed 2 instructions
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+
+	//--------------------------------------------- 2 ------------------------------------------------//
+	{
+		uint32_t got;
+		testId = mips_test_begin_test("bgez");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 7, 0x0000000Ful);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 8, 0xFFFFFFFFul);
+
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x00, 0x30, 0x01, 0x05 }; // bgez $8, 0x3000 : 0000 0101 0000 0001 0011 0000 0000 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x01, 0x00, 0xEA, 0x24 }; // addiu $10, $7, 0x1 : 0010 0100 1110 1010 0000 0000 0000 0001 (encoding_bytes is big endian form of this)
+
+			// Write addiu as instruction after the branch, as we want to check if the branch delay slot is working properly
+			err = mips_mem_write(mem, address + 4, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		// Result of the addiu instruction
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 10, &got));
+
+		uint32_t new_pc;
+		if (!err)
+			err = mips_cpu_get_pc(cpu, &new_pc);
+
+		// new_pc should be the address of the instruction after the branch delay instruction (address + 8) with no offset as the condition was not satisfied
+		passed = (err == mips_Success) && (got == 0x00000010) && (new_pc == (address + 8));
+
+		address += 8; // Skip forward twice as we executed 2 instructions
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+	/**************************************************************************************************/
+	/********************************************* DIV ************************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	{
+		uint32_t lo;
+		uint32_t hi;
+		testId = mips_test_begin_test("div");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 8, 0xFFFFFFF8ul);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 9, 0x00000003ul);
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x1A, 0x00, 0x09, 0x01 }; // div $8, $9 : 0000 0001 0000 1001 0000 0000 0001 1010 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x12, 0x58, 0x00, 0x00 }; //mflo &11 : 0000 0000 0000 0000 0101 1000 0001 0010 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x10, 0x60, 0x00, 0x00 }; // mfhi $12 : 0000 0000 0000 0000 0110 0000 0001 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 11, &lo) | mips_cpu_get_register(cpu, 12, &hi));
+
+		passed = (err == mips_Success) && (lo == 0xFFFFFFFE) && (hi == 0xFFFFFFFE);
+
+		mips_test_end_test(testId, passed, NULL);
+	}
+
+	/**************************************************************************************************/
+	/********************************************* DIVU ***********************************************/
+	/**************************************************************************************************/
+
+	//--------------------------------------------- 1 ------------------------------------------------//
+	{
+		uint32_t lo;
+		uint32_t hi;
+		testId = mips_test_begin_test("divu");
+		passed = 0;
+
+		err = mips_cpu_set_register(cpu, 8, 0x00000050ul);
+		if (!err)
+			err = mips_cpu_set_register(cpu, 9, 0x00000003ul);
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x1B, 0x00, 0x09, 0x01 }; // divu $8, $9 : 0000 0001 0000 1001 0000 0000 0001 1011 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		//  Make sure the program-counter is at that address
+		if (!err)
+			err = mips_cpu_set_pc(cpu, address);
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x12, 0x58, 0x00, 0x00 }; //mflo &11 : 0000 0000 0000 0000 0101 1000 0001 0010 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+		if (!err)
+		{
+			uint8_t encoding_bytes[4] = { 0x10, 0x60, 0x00, 0x00 }; // mfhi $12 : 0000 0000 0000 0000 0110 0000 0001 0000 (encoding_bytes is big endian form of this)
+
+			// Write encoding into memory at a known address
+			err = mips_mem_write(mem, address, 4, encoding_bytes);
+		}
+
+		if (!err)
+			err = mips_cpu_step(cpu);
+
+		address += 4;
+
+
+		if (!err)
+			err = (mips_error)(err | mips_cpu_get_register(cpu, 11, &lo) | mips_cpu_get_register(cpu, 12, &hi));
+
+		passed = (err == mips_Success) && (lo == 0x0000001A) && (hi == 0x00000002);
 
 		mips_test_end_test(testId, passed, NULL);
 	}
@@ -369,7 +709,6 @@ int main()
 
 		//--------------------------------------------- 1 ------------------------------------------------//
 		{
-			uint32_t lo;
 			uint32_t hi;
 			testId = mips_test_begin_test("mfhi");
 			passed = 0;
@@ -425,7 +764,6 @@ int main()
 		//--------------------------------------------- 1 ------------------------------------------------//
 		{
 			uint32_t lo;
-			uint32_t hi;
 			testId = mips_test_begin_test("mflo");
 			passed = 0;
 
@@ -487,7 +825,7 @@ int main()
 
 			if (!err)
 			{
-				uint8_t encoding_bytes[4] = { 0x18, 0x00, 0x09, 0x01 }; // multu $8, $9 : 0000 0001 0000 1001 0000 0000 0001 1000 (encoding_bytes is big endian form of this)
+				uint8_t encoding_bytes[4] = { 0x18, 0x00, 0x09, 0x01 }; // mult $8, $9 : 0000 0001 0000 1001 0000 0000 0001 1000 (encoding_bytes is big endian form of this)
 
 				// Write encoding into memory at a known address
 				err = mips_mem_write(mem, address, 4, encoding_bytes);
@@ -531,7 +869,7 @@ int main()
 			if (!err)
 				err = (mips_error)(err | mips_cpu_get_register(cpu, 11, &lo) | mips_cpu_get_register(cpu, 12, &hi));
 
-			passed = (err == mips_Success) && (lo == 0xFFFFFFFE) && (hi == 0x00000000);
+			passed = (err == mips_Success) && (lo == 0xFFFFFFFE) && (hi == 0xFFFFFFFF);
 
 			mips_test_end_test(testId, passed, NULL);
 		}

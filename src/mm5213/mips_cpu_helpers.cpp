@@ -25,3 +25,16 @@ void sign_extend_16_to_32(uint16_t &value)
 	value = (int32_t)((int16_t)value);
 }
 
+char decode_instruction_type(uint8_t encoding_bytes[4])
+{
+	char type;
+
+	if (encoding_bytes[0] >> 2 == 0) // if all 6 bits are 0, it is r type
+	type = 'r';
+	else if (encoding_bytes[0] >> 4 == 0 && (encoding_bytes[0] & 0x8))// if the first 4 bits are 0 and the 5th bit is 1, it is j type
+	type = 'j';
+	else
+	type = 'i';
+
+	return type;
+}

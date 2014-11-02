@@ -22,6 +22,8 @@ mips_cpu_h mips_cpu_create(mips_mem_h mem)
 	unsigned i;
 	mips_cpu_h res=(mips_cpu_h)malloc(sizeof(struct mips_cpu_impl));
 
+	if (res == NULL)
+		return 0;
 	res->mem=mem;
 
 	res->pc=0;
@@ -133,13 +135,8 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	uint32_t encoding = (encoding_bytes[3]) | (encoding_bytes[2] << 8) | (encoding_bytes[1] << 16) | (encoding_bytes[0] << 24);
 
 	// - Decode the instruction (is it R, I, J)?
-	char type;
-	if (encoding_bytes[0] >> 2 == 0) // if any of first 6 bits are 1, it is not r type
-		type = 'r';
-	else if (encoding_bytes[0] >> 4 == 0)// if any of the first 4 bits are 1, it is not j type
-		type = 'j';
-	else
-		type = 'i';
+	char type = decode_instruction_type(encoding_bytes);
+	
 	
 	//Decode the operation of the instruction and execute
 	if (type == 'r')
@@ -158,7 +155,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (signed_overflow(rs, rt, rs + rt))
 				return mips_ExceptionArithmeticOverflow;
 
-			err = set_dest_reg_r(state, encoding, (signed)rs + (signed)rt);
+			err = set_dest_reg_r(state, encoding, (int32_t)rs + (int32_t)rt);
 			state->pc += state->pcN;
 			break;
 			
@@ -174,6 +171,34 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			state->pc += state->pcN;
 			break;
 			
+		case 0x1A: // 01 1010 DIV
+		{
+			if (rt == 0)
+				return mips_ErrorInvalidArgument;
+
+			// Unsure about whether the remainder should be -ve or +ve when dividing a -ve number: This gives a -ve remainder
+			int32_t remainder = (int32_t)rs % (int32_t)rt;
+			int32_t quotient = (int32_t)rs / (int32_t)rt;
+
+			state->lo = (uint32_t)quotient;
+			state->hi = (uint32_t)remainder;
+			state->pc += state->pcN;
+			break;
+		}
+		case 0x1B: // 01 1011 DIVU
+		{
+			if (rt == 0)
+				return mips_ErrorInvalidArgument;
+
+			uint32_t remainder = rs % rt;
+			uint32_t quotient = rs / rt;
+
+			state->lo = quotient;
+			state->hi = remainder;
+			state->pc += state->pcN;
+			break;
+		}
+
 		case 0x25: //10 0101 OR
 	
 			err = set_dest_reg_r(state, encoding, rs | rt);
@@ -184,6 +209,8 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			if (rs | rt) // rs and rt must both be 0
 				return mips_ExceptionInvalidInstruction;
+
+			
 
 			err = set_dest_reg_r(state, encoding, state->hi);
 			state->pc += state->pcN;
@@ -200,13 +227,11 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 		case 0x18: // 01 1000 MULT
 		{
-					   
-			rs = (int64_t)rs;
-			rt = (int64_t)rt;
-			uint64_t result = rs * rt;
+			
+			int64_t result = (int64_t)((int32_t)rs) * (int64_t)((int32_t)rt);
 
-			state->lo = (uint32_t)(result & 0xFFFFFFFF);
-			state->hi = (uint32_t)((result & 0xFFFFFFFF00000000) >> 32);
+			state->lo = (int32_t)(result & 0xFFFFFFFF);
+			state->hi = (int32_t)((result & 0xFFFFFFFF00000000) >> 32);
 			state->pc += state->pcN;
 			break;
 		}
@@ -240,7 +265,17 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 		case 0x2A: // 10 1010 SLT
 
-			if ((signed)rs < (signed)rt)
+			if ((int32_t)rs < (int32_t)rt)
+				err = set_dest_reg_r(state, encoding, 0x1);
+			else
+				err = set_dest_reg_r(state, encoding, 0);
+
+			state->pc += state->pcN;
+			break;
+
+		case 0x2B: // 10 1011 SLTU
+
+			if (rs < rt)
 				err = set_dest_reg_r(state, encoding, 0x1);
 			else
 				err = set_dest_reg_r(state, encoding, 0);
@@ -294,8 +329,10 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			err = set_dest_reg_r(state, encoding, rs ^ rt);
 			state->pc += state->pcN;
 			break;
-		}
 
+		default:
+			return mips_ExceptionInvalidInstruction;
+		}
 	}
 
 	else if (type == 'i')
@@ -313,7 +350,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			if (signed_overflow(rs, imm, rs + imm))
 				return mips_ExceptionArithmeticOverflow;
 
-			set_dest_reg_i(state, encoding, (signed)rs + (signed)imm);
+			set_dest_reg_i(state, encoding, (int32_t)rs + (int32_t)imm);
 			state->pc += state->pcN;
 			break;
 
@@ -331,6 +368,43 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			state->pc += state->pcN;
 			break;
 
+		case 0x4: // 0001 00 BEQ
+		{
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
+
+			int32_t offset = (int32_t)imm << 2;
+
+			// Execute the next instruction (stored in the branch delay slot)
+			state->pc += state->pcN;
+			mips_cpu_step(state);
+
+			if (rs == rt)
+				state->pc += offset - 4; //-4 because the branch delay instruction will increment the pc by 4 itself, so we want to negate that
+
+			break;
+		}
+
+		case 0x1: // REGIMM == 0000 01 : Branches comparing to zero
+		{
+			uint32_t rt = (encoding >> 16) & 0x1F;
+			switch (rt)
+			{
+			case 0x01: // 0000 01 BGEZ
+
+				int32_t offset = (int32_t)imm << 2;
+
+				// Execute the next instruction (stored in the branch delay slot)
+				state->pc += state->pcN;
+				mips_cpu_step(state);
+
+				if ((rs & 0x80000000) == 0)
+					state->pc += offset - 4; //-4 because the branch delay instruction will increment the pc by 4 itself, so we want to negate that
+
+				break;
+			}
+		}
+		
 		case 0xF: // 0011 11 LUI
 
 			imm = (uint32_t)imm; // Zero extension
@@ -429,7 +503,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 		case 0x0A: // 00 1010 SLTI
 
-			if ((signed)rs < (signed)imm)
+			if ((int32_t)rs < (int32_t)imm)
 				err = set_dest_reg_i(state, encoding, 0x1);
 			else
 				err = set_dest_reg_i(state, encoding, 0);
@@ -457,9 +531,17 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			set_dest_reg_i(state, encoding, rs ^ imm);
 			state->pc += state->pcN;
 			break;
+
+		default:
+			return mips_ExceptionInvalidInstruction; 
 		}
 	}
 
+	else if (type == 'j')
+	{
+		uint8_t opcode = encoding_bytes[0] >> 2;
+		uint32_t address = encoding & 0x3FFFFFF;
+	}
 	return err;
 
 }
