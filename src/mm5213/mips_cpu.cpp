@@ -584,6 +584,12 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			
 			break;
 		}
+
+		case 0x22: // 1000 10 LWL
+			return mips_ErrorNotImplemented;
+		case 0x26://1001 10 LWR
+			return mips_ErrorNotImplemented;
+
 		case 0xD: // 0011 01 ORI
 
 			imm = (uint32_t)imm; // Zero extension
@@ -757,4 +763,8 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	state->pcN += 4;
 	return err;
 
+}
+mips_error mips_cpu_set_debug_level(mips_cpu_h state, unsigned level, FILE *dest)
+{
+	return mips_ErrorNotImplemented;
 }
