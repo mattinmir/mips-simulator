@@ -457,20 +457,64 @@ mips_error mips_cpu_step(mips_cpu_h state)
 				break;
 
 			}
+
 			break;
 		}
 
 		case 0x07: // 0001 11 BGTZ
-			return mips_ErrorNotImplemented;
+		{
+			int32_t offset = (int32_t)imm << 2;
+
+			// Reset pcN in case previous instruction inflated it 
+			state->pcN = state->pc + 4;
+
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			err = mips_cpu_step(state);
+
+			if ((int32_t)rs > 0)
+				state->pcN += offset - 4;
 			break;
+		}
 
 		case 0x06: // 0001 10 BLEZ
-			return mips_ErrorNotImplemented;
+		{
+			int32_t offset = (int32_t)imm << 2;
+
+			// Reset pcN in case previous instruction inflated it 
+			state->pcN = state->pc + 4;
+
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			err = mips_cpu_step(state);
+
+			if ((int32_t)rs <= 0)
+				state->pcN += offset - 4;
 			break;
+		}
 
 		case 0x05: // 0001 01 BNE
-			return mips_ErrorNotImplemented;
+		{
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
+
+			int32_t offset = (int32_t)imm << 2;
+
+			// Reset pcN in case previous instruction inflated it 
+			state->pcN = state->pc + 4;
+
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			err = mips_cpu_step(state);
+
+			if (rs != rt)
+				state->pcN += offset - 4;
+
 			break;
+		}
 
 		case 0xF: // 0011 11 LUI
 
@@ -529,16 +573,20 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			uint32_t rt;
 			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
 
+			unsigned int index = (rs + imm) % 4;
+
 			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
-			err = mips_cpu_get_register(state, rs + imm, &current_word);
+			err = mips_cpu_get_register(state, rs + imm - index, &current_word);
 
 			uint8_t word_bytes[4] =
 			{
 				(current_word & 0xFF000000) >> 24, // Byte 3 of current word
 				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
 				(current_word & 0xFF00) >> 8, // Byte 1 of current word
-				rt & 0xFF // byte 0 of rt
+				current_word & 0xFF // Byte 0 of current word
 			};
+
+			word_bytes[index] = rt & 0xFF; // byte i of rt
 
 			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
 			
@@ -552,16 +600,32 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			uint32_t rt;
 			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
 
-			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
-			err = mips_cpu_get_register(state, rs + imm, &current_word);
+			unsigned int index = (rs + imm) % 4;
+			if (index == 1 || index == 3)
+				return mips_ExceptionInvalidAlignment;
 
-			uint8_t word_bytes[4] =
+			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
+			err = mips_cpu_get_register(state, rs + imm - index, &current_word);
+
+			uint8_t word_bytes[4];
+			if (index == 0)
 			{
-				(current_word & 0xFF000000) >> 24, // Byte 3 of current word
-				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
-				(rt & 0xFF00) >> 8, //byte 1 of rt
-				rt & 0xFF // byte 0 of rt
-			};
+				
+				word_bytes[0] = (current_word & 0xFF000000) >> 24; // Byte 3 of current word
+				word_bytes[1] = (current_word & 0xFF0000) >> 16; // Byte 2 of current word
+				word_bytes[2] = (rt & 0xFF00) >> 8; //byte 1 of rt
+				word_bytes[3] = rt & 0xFF; // byte 0 of rt
+				
+			}
+			else if (index == 2)
+			{
+				
+				word_bytes[0] = (rt & 0xFF00) >> 8; //byte 1 of rt
+				word_bytes[1] = (rt & 0xFF); // byte 0 of rt
+				word_bytes[2] = (current_word & 0xFF00) >> 8; // Byte 3 of current word
+				word_bytes[3] = current_word & 0xFF; // Byte 2 of current word
+				
+			}
 
 			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
 			
