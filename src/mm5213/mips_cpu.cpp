@@ -35,7 +35,15 @@ mips_cpu_h mips_cpu_create(mips_mem_h mem)
 
 	return res;
 }
+mips_error mips_cpu_reset(mips_cpu_h state)
+{
+	for (unsigned int i = 0; i < 32; i++)
+		state->regs[i] = 0;
+	state->pc = 0;
+	state->pcN = 4;
 
+	return mips_Success;
+}
 void mips_cpu_free(mips_cpu_h state)
 {
 	free(state);
@@ -211,6 +219,19 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			break;
 		}
 
+		case 0x08: // 00 1000 JR
+
+			if ((encoding & 0x1FFFC0) != 0)
+				return mips_ErrorInvalidArgument;
+			if ((rs & 0x3) != 0)
+				err = mips_ExceptionInvalidAddress;
+
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			state->pcN = rs;
+			return mips_Success;
+
 		case 0x25: //10 0101 OR
 	
 			err = set_dest_reg_r(state, encoding, rs | rt);
@@ -329,6 +350,14 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			
 			break;
 
+		case 0x22: //10 0010 SUB
+
+			if (signed_overflow(rs, rt, rs - rt))
+				return mips_ExceptionArithmeticOverflow;
+
+			err = set_dest_reg_r(state, encoding, rs - rt);
+
+			break;
 		case 0x23: //10 0011 SUBU
 
 			err = set_dest_reg_r(state, encoding, rs - rt);
@@ -386,31 +415,13 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			int32_t offset = (int32_t)imm << 2;
 
-			// Reset pcN in case previous instruction inflated it 
-			state->pcN = state->pc + 4;
-
 			// Increment pc to execute the next instruction (stored in the branch delay slot)
 			state->pc += 4; 
 
-			err = mips_cpu_step(state); 
-			/* 
-			You might think that since we are incrementing the pc then stepping the cpu that the
-			pc will increment twice, as we perform an increment at the end of each step. However,
-			what we actually do at the end of the step is set pc to pcN, then increment pcN. Usually,
-			this would increment the pc because pcN would have been incremented in the previous step.
-			But here we are incrementing pc directly and not changing pcN, so when the branch delay 
-			instruction reaches the end of its step, pc will equal pcN, so setting pc to the value of 
-			pcN changes nothing, and we are still at the same address, with pcN now pointing to the next
-			instruction in memory.
-
-			If the condition is satisfied, the code below will move pcN to the branch location, if not,
-			then pcN is already pointing to the next instruction, and that value will be put into pc at
-			the end of this branch instruction's step.
-			*/
 			if (rs == rt)
-				state->pcN += offset - 4;
+				state->pcN += offset;
 
-			break;
+			return mips_Success;
 		}
 
 		case 0x1: // REGIMM == 0000 01 : BGEZ/BGEZAL/BLTZ/BLTZAL
@@ -421,40 +432,48 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			{
 			case 0x01: // 0000 01 BGEZ
 
-				// Reset pcN in case previous instruction inflated it 
-				state->pcN = state->pc + 4;
 
 				// Increment pc to execute the next instruction (stored in the branch delay slot)
 				state->pc += 4;
-
-				err = mips_cpu_step(state);
 				
 				if ((int32_t)rs >= 0)
-					state->pcN += offset - 4;
+					state->pcN += offset;
 
-				break;
+				return mips_Success;
+			case 0x11: // 1 0001 BGEZAL
+				// Increment pc to execute the next instruction (stored in the branch delay slot)
+				state->pc += 4;
 
-			case 0x11: // 1000 01 BGEZAL
-				return mips_ErrorNotImplemented;
-				break;
+				//Store link address
+				state->regs[31] = state->pc + 4;
+
+				if ((int32_t)rs >= 0)
+					state->pcN += offset;
+
+				return mips_Success;
 			
-			case 0x00: //0000 00 BLTZ
-
-				// Reset pcN in case previous instruction inflated it 
-				state->pcN = state->pc + 4;
+			case 0x00: // 0 0000 BLTZ
 
 				// Increment pc to execute the next instruction (stored in the branch delay slot)
 				state->pc += 4;
 
-				err = mips_cpu_step(state);
+				if ((int32_t)rs < 0)
+					state->pcN += offset;
+
+				return mips_Success;
+
+			case 0x10: // 1 0000 BLTZAL
+
+				// Increment pc to execute the next instruction (stored in the branch delay slot)
+				state->pc += 4;
+
+				//Store link address
+				state->regs[31] = state->pc + 4;
 
 				if ((int32_t)rs < 0)
-					state->pcN += offset - 4;
-				break;
+					state->pcN += offset;
 
-			case 0x20: //1000 00 BLTZAL
-				return mips_ErrorNotImplemented;
-				break;
+				return mips_Success;
 
 			}
 
@@ -465,34 +484,29 @@ mips_error mips_cpu_step(mips_cpu_h state)
 		{
 			int32_t offset = (int32_t)imm << 2;
 
-			// Reset pcN in case previous instruction inflated it 
-			state->pcN = state->pc + 4;
-
 			// Increment pc to execute the next instruction (stored in the branch delay slot)
 			state->pc += 4;
 
-			err = mips_cpu_step(state);
-
 			if ((int32_t)rs > 0)
-				state->pcN += offset - 4;
-			break;
+				state->pcN += offset;
+
+			return mips_Success;
 		}
 
 		case 0x06: // 0001 10 BLEZ
 		{
-			int32_t offset = (int32_t)imm << 2;
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
 
-			// Reset pcN in case previous instruction inflated it 
-			state->pcN = state->pc + 4;
+			int32_t offset = (int32_t)imm << 2;
 
 			// Increment pc to execute the next instruction (stored in the branch delay slot)
 			state->pc += 4;
 
-			err = mips_cpu_step(state);
+			if ((int32_t)rs <= (int32_t)rt)
+				state->pcN += offset;
 
-			if ((int32_t)rs <= 0)
-				state->pcN += offset - 4;
-			break;
+			return mips_Success;
 		}
 
 		case 0x05: // 0001 01 BNE
@@ -502,18 +516,13 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			int32_t offset = (int32_t)imm << 2;
 
-			// Reset pcN in case previous instruction inflated it 
-			state->pcN = state->pc + 4;
-
 			// Increment pc to execute the next instruction (stored in the branch delay slot)
 			state->pc += 4;
 
-			err = mips_cpu_step(state);
-
 			if (rs != rt)
-				state->pcN += offset - 4;
+				state->pcN += offset;
 
-			break;
+			return mips_Success;
 		}
 
 		case 0xF: // 0011 11 LUI
@@ -524,19 +533,36 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			
 			break;
 
+		case 0x20: // 1000 00 LB
+		{
+			imm = (int32_t)imm; // Sign extension
+
+			unsigned int index = 3 - ((rs + imm) % 4); // 3-index to get big endian address -- Not sure if I'm doing endianness correctly here
+			uint32_t address = rs + imm - ((rs + imm) % 4);
+			uint8_t word_bytes[4];
+			err = mips_mem_read(state->mem, address, 4, word_bytes);
+
+			//Big endian value will be taken from memory and stored in rt still big endian
+			int32_t byte = (int32_t)((int8_t)(word_bytes[index]));
+
+			set_dest_reg_i(state, encoding, byte);
+
+			break;
+		}
+
 		case 0x24: // 1001 00 LBU
 		{
 			imm = (int32_t)imm; // Sign extension
 
-			unsigned int index = 3 - ((rs + imm) % 4); // 4-index to get big endian adress -- Not sure if I'm doing endianness correctly here
-			unsigned int address = rs + imm - ((rs + imm) % 4);
+			unsigned int index = 3 - ((rs + imm) % 4); // 3-index to get big endian address -- Not sure if I'm doing endianness correctly here
+			uint32_t address = rs + imm - ((rs + imm) % 4);
 			uint8_t word_bytes[4];
 			err = mips_mem_read(state->mem, address, 4, word_bytes);
 
-			//Big endian value will be taken from memory and stored in rt stil big endian
-			uint32_t word = word_bytes[index];
+			//Big endian value will be taken from memory and stored in rt still big endian
+			uint32_t byte =(uint32_t)word_bytes[index];
 
-			set_dest_reg_i(state, encoding, word);
+			set_dest_reg_i(state, encoding, byte);
 			
 			break;
 		}
@@ -576,14 +602,14 @@ mips_error mips_cpu_step(mips_cpu_h state)
 			unsigned int index = (rs + imm) % 4;
 
 			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
-			err = mips_cpu_get_register(state, rs + imm - index, &current_word);
+			err = mips_mem_read(state->mem, rs + imm - index, 4, (uint8_t*)&current_word);
 
 			uint8_t word_bytes[4] =
 			{
-				(current_word & 0xFF000000) >> 24, // Byte 3 of current word
-				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
+				current_word & 0xFF, // Byte 0 of current word
 				(current_word & 0xFF00) >> 8, // Byte 1 of current word
-				current_word & 0xFF // Byte 0 of current word
+				(current_word & 0xFF0000) >> 16, // Byte 2 of current word
+				(current_word & 0xFF000000) >> 24 // Byte 3 of current word
 			};
 
 			word_bytes[index] = rt & 0xFF; // byte i of rt
@@ -602,7 +628,7 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			unsigned int index = (rs + imm) % 4;
 			if (index == 1 || index == 3)
-				return mips_ExceptionInvalidAlignment;
+				return mips_ExceptionInvalidAddress;
 
 			uint32_t current_word; // Word currently in memory at effective address (rs + imm)
 			err = mips_cpu_get_register(state, rs + imm - index, &current_word);
@@ -654,7 +680,30 @@ mips_error mips_cpu_step(mips_cpu_h state)
 
 			
 			break;
+		case 0x2B: // 1010 11 SW
+		{
+			imm = (int32_t)imm; // Sign extension
 
+			uint32_t rt;
+			err = mips_cpu_get_register(state, (encoding >> 16) & 0x1F, &rt);
+
+
+			if (((rs + imm) % 4) != 0)
+				return mips_ExceptionInvalidAddress;
+
+			uint8_t word_bytes[4] =
+			{
+				word_bytes[0] = (rt & 0xFF000000) >> 24, // Byte 3 of current word
+				word_bytes[1] = (rt & 0xFF0000) >> 16, // Byte 2 of current word
+				word_bytes[2] = (rt & 0xFF00) >> 8, //byte 1 of rt
+				word_bytes[3] = rt & 0xFF // byte 0 of rt
+			};
+			
+
+			err = mips_mem_write(state->mem, rs + imm, 4, word_bytes);
+
+			break;
+		}
 		case 0xE: // 0011 10 XORI
 
 			imm = (uint32_t)imm; // Zero extension
@@ -671,7 +720,37 @@ mips_error mips_cpu_step(mips_cpu_h state)
 	else if (type == 'j')
 	{
 		uint8_t opcode = encoding_bytes[0] >> 2;
-		uint32_t address = encoding & 0x3FFFFFF;
+		uint32_t instr_index = encoding & 0x3FFFFFF;
+		uint32_t target_address = instr_index << 2;
+
+		switch (opcode)
+		{
+		case 0x02: // 0000 10 J
+		{
+
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			uint32_t upper_pc = state->pc & 0xF0000000;
+			target_address |= upper_pc;
+
+			state->pcN = target_address;
+			return mips_Success;
+		}
+		case 0x03: // 0000 11 JAL
+		{
+			// Increment pc to execute the next instruction (stored in the branch delay slot)
+			state->pc += 4;
+
+			uint32_t upper_pc = state->pc & 0xF0000000;
+			target_address |= upper_pc;
+			
+			state->regs[31] = state->pc + 4; // Set LR to address of second instruction after branch
+			state->pcN = target_address;
+			return mips_Success;
+		}
+
+		}
 	}
 
 	state->pc = state->pcN;
